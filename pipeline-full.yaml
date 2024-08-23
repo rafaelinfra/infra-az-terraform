@@ -1,0 +1,119 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+#trigger:
+#  branches:
+#    include:
+#    - master
+
+trigger:
+  branches:
+    exclude:
+    - '*'
+
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  # Azure Resource Manager connection created during pipeline creation
+  tf-status-sa-rg: '<<rg do storage para o states>>'
+  tf-status-sa-name: '<<<nome do storage states'
+  tf-status-sa-container-name: '<<<container states>>>'
+  tf-provider: 'azurerm'
+  backendAzureRmKey-resource-name: terraform.tfstate
+  azureSubscription: '<<<<service connection>>>>'
+
+stages:
+- stage: Plan
+  displayName: 'Plan Infrastructure'
+  jobs:
+  - job: PlanInfra
+    displayName: Plan Infra
+    #pool:
+    #  vmImage: ubuntu-latest
+    steps:
+    - checkout: self
+    - task: TerraformInstaller@0
+      displayName: Install Terraform latest
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform : Init'
+      inputs:
+        provider: '$(tf-provider)'
+        command: init
+        backendServiceArm: '$(azureSubscription)'
+        backendAzureRmResourceGroupName: '$(tf-status-sa-rg)'
+        backendAzureRmStorageAccountName: '$(tf-status-sa-name)'
+        backendAzureRmContainerName: '$(tf-status-sa-container-name)'
+        backendAzureRmKey: '$(backendAzureRmKey-resource-name)'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform : Validate'
+      inputs:
+        provider: '$(tf-provider)'
+        command: validate
+        backendServiceArm: '$(azureSubscription)'
+        backendAzureRmResourceGroupName: '$(tf-status-sa-rg)'
+        backendAzureRmStorageAccountName: '$(tf-status-sa-name)'
+        backendAzureRmContainerName: '$(tf-status-sa-container-name)'
+        backendAzureRmKey: '$(backendAzureRmKey-resource-name)'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/'
+
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform : Plan'
+      inputs:
+        provider: 'azurerm'
+        command: plan
+        backendServiceArm: '$(azureSubscription)'
+        environmentServiceNameAzureRM: '$(azureSubscription)'
+        backendAzureRmResourceGroupName: '$(tf-status-sa-rg)'
+        backendAzureRmStorageAccountName: '$(tf-status-sa-name)'
+        backendAzureRmContainerName: '$(tf-status-sa-container-name)'
+        backendAzureRmKey: '$(backendAzureRmKey-resource-name)'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/'
+
+- stage: Approve
+  jobs:
+    - job: aprovar_apply
+      displayName: Approval of Resources
+      pool: server
+      steps:
+      - task: ManualValidation@0
+        timeoutInMinutes: 10
+
+- stage: Apply
+  displayName: 'Apply Infrastructure'
+  jobs:
+  - job: ApplyInfra
+    displayName: Apply Infra
+    #pool:
+    #  vmImage: ubuntu-latest
+    steps:
+      - task: TerraformTaskV4@4
+        displayName: 'Terraform : Init'
+        inputs:
+          provider: '$(tf-provider)'
+          command: init
+          backendServiceArm: '$(azureSubscription)'
+          backendAzureRmResourceGroupName: '$(tf-status-sa-rg)'
+          backendAzureRmStorageAccountName: '$(tf-status-sa-name)'
+          backendAzureRmContainerName: '$(tf-status-sa-container-name)'
+          backendAzureRmKey: '$(backendAzureRmKey-resource-name)'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/'
+
+      - task: TerraformTaskV4@4
+        displayName: 'Terraform : Apply'
+        inputs:
+          provider: '$(tf-provider)'
+          workingDirectory: '$(System.DefaultWorkingDirectory)/terraform/'
+          backendServiceArm: '$(azureSubscription)'
+          environmentServiceNameAzureRM: '$(azureSubscription)'
+          backendAzureRmResourceGroupName: '$(tf-status-sa-rg)'
+          backendAzureRmStorageAccountName: '$(tf-status-sa-name)'
+          backendAzureRmContainerName: '$(tf-status-sa-container-name)'
+          backendAzureRmKey: '$(backendAzureRmKey-resource-name)'
+          command: apply
